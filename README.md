@@ -30,7 +30,7 @@ Health is the source of truth. The app also writes a copy to the App Group conta
 ## Building and installing
 
 - Xcode 27+, iOS 26+, iPhone only.
-- Signed with the Cheese and Pixels team (`6V83AW8362`), bundle ID `com.cheeseandpixels.weightwidget`, App Group `group.com.cheeseandpixels.weightwidget`.
+- Bundle ID `com.cheeseandpixels.weightwidget`, App Group `group.com.cheeseandpixels.weightwidget`.
 - To install on your phone, plug it in and run from Xcode, or Product > Archive > Distribute App > Release Testing (ad hoc). The phone must be registered as a device on the team.
 
 For UI work in the simulator, launch with the `-cacheOnly` argument (Debug only) to skip HealthKit and show whatever is in the App Group cache.
