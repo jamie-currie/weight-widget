@@ -13,24 +13,3 @@ A personal iOS app and home-screen widget for tracking body weight, with Apple H
 - Picks up readings from other sources (e.g. a smart scale) via HealthKit background delivery and refreshes the widget
 
 Readings are kept in kg. Longer ranges are averaged per day (3M, 6M) or per week (Y, All) on the graph; the delta always uses the raw readings.
-
-## Structure
-
-| Folder | What |
-| --- | --- |
-| `App/` | The SwiftUI app (`WeightModel` owns the data) |
-| `Widget/` | WidgetKit extension and its range configuration intent |
-| `Shared/` | Code compiled into both: HealthKit wrapper, ranges/delta maths, chart, App Group cache |
-| `Config/` | Info.plists and entitlements |
-
-The project uses Xcode folder-synced groups, so new files dropped into these folders are picked up automatically.
-
-Health is the source of truth. The app also writes a copy to the App Group container (`SampleCache`), because the widget can't read HealthKit while the phone is locked.
-
-## Building and installing
-
-- Xcode 27+, iOS 26+, iPhone only.
-- Signed with the Cheese and Pixels team (`6V83AW8362`), bundle ID `com.cheeseandpixels.weightwidget`, App Group `group.com.cheeseandpixels.weightwidget`.
-- To install on your phone, plug it in and run from Xcode, or Product > Archive > Distribute App > Release Testing (ad hoc). The phone must be registered as a device on the team.
-
-For UI work in the simulator, launch with the `-cacheOnly` argument (Debug only) to skip HealthKit and show whatever is in the App Group cache.
