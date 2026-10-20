@@ -6,6 +6,7 @@ iOS app + WidgetKit extension that tracks body weight in Apple Health. See `READ
 - Apple Health is the only real data store. Don't add a separate database; `SampleCache` is just a mirror in the App Group container, because the widget can't read HealthKit while the phone is locked.
 - Files in `App/`, `Widget/` and `Shared/` are auto-included (folder-synced groups). `Shared/` goes into both targets, so don't import WidgetKit-only or app-only types there.
 - Units are kg throughout.
+- For UI work in the simulator, launch with the `-cacheOnly` argument (Debug only) to skip HealthKit and show whatever is in the App Group cache.
 
 ## Structure
 
