@@ -26,11 +26,3 @@ Readings are kept in kg. Longer ranges are averaged per day (3M, 6M) or per week
 The project uses Xcode folder-synced groups, so new files dropped into these folders are picked up automatically.
 
 Health is the source of truth. The app also writes a copy to the App Group container (`SampleCache`), because the widget can't read HealthKit while the phone is locked.
-
-## Building and installing
-
-- Xcode 27+, iOS 26+, iPhone only.
-- Bundle ID `com.cheeseandpixels.weightwidget`, App Group `group.com.cheeseandpixels.weightwidget`.
-- To install on your phone, plug it in and run from Xcode, or Product > Archive > Distribute App > Release Testing (ad hoc). The phone must be registered as a device on the team.
-
-For UI work in the simulator, launch with the `-cacheOnly` argument (Debug only) to skip HealthKit and show whatever is in the App Group cache.
