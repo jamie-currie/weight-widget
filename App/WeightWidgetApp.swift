@@ -1,9 +1,11 @@
 import SwiftUI
+import WidgetKit
 
 @main
 struct WeightWidgetApp: App {
     @State private var model = WeightModel()
     @State private var showingAdd = false
+    @Environment(\.scenePhase) private var scenePhase
 
     var body: some Scene {
         WindowGroup {
@@ -12,6 +14,9 @@ struct WeightWidgetApp: App {
                 .task { await model.start() }
                 .onOpenURL { url in
                     if url == AppConfig.addURL { showingAdd = true }
+                }
+                .onChange(of: scenePhase, initial: true) {
+                    if scenePhase == .active { WidgetCenter.shared.reloadAllTimelines() }
                 }
         }
     }
