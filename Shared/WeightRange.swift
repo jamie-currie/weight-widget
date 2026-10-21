@@ -27,17 +27,34 @@ enum WeightRange: String, CaseIterable, Codable, Identifiable, Sendable {
         }
     }
 
-    /// Start of the range, or nil for all time. Week means the last 7 days including today.
-    func startDate(now: Date = .now, calendar: Calendar = .current) -> Date? {
-        let today = calendar.startOfDay(for: now)
+    /// What the delta is measured against: the preceding window of the same length.
+    var comparisonTitle: String? {
         switch self {
-        case .week: return calendar.date(byAdding: .day, value: -6, to: today)
-        case .month: return calendar.date(byAdding: .month, value: -1, to: today)
-        case .threeMonths: return calendar.date(byAdding: .month, value: -3, to: today)
-        case .sixMonths: return calendar.date(byAdding: .month, value: -6, to: today)
-        case .year: return calendar.date(byAdding: .year, value: -1, to: today)
-        case .all: return nil
+        case .week: "vs last week"
+        case .month: "vs last month"
+        case .threeMonths: "vs previous 3 months"
+        case .sixMonths: "vs previous 6 months"
+        case .year: "vs last year"
+        case .all: nil
         }
+    }
+
+    /// Length of the rolling window in calendar days, including today; nil for all time.
+    var days: Int? {
+        switch self {
+        case .week: 7
+        case .month: 30
+        case .threeMonths: 90
+        case .sixMonths: 180
+        case .year: 365
+        case .all: nil
+        }
+    }
+
+    /// Start of the range, or nil for all time. The range is the last `days` days including today.
+    func startDate(now: Date = .now, calendar: Calendar = .current) -> Date? {
+        guard let days else { return nil }
+        return calendar.date(byAdding: .day, value: -(days - 1), to: calendar.startOfDay(for: now))
     }
 
     /// Longer ranges are averaged into buckets so the line stays readable.
@@ -55,12 +72,6 @@ extension Array where Element == WeightSample {
     func filtered(to range: WeightRange, now: Date = .now) -> [WeightSample] {
         guard let start = range.startDate(now: now) else { return self }
         return filter { $0.date >= start && $0.date <= now }
-    }
-
-    /// Latest minus first reading in the range; nil with fewer than two readings.
-    var delta: Double? {
-        guard count > 1, let first, let last else { return nil }
-        return last.kg - first.kg
     }
 
     func chartPoints(for range: WeightRange, calendar: Calendar = .current) -> [WeightSample] {

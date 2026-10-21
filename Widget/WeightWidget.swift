@@ -60,11 +60,11 @@ struct WeightWidgetView: View {
     var body: some View {
         let inRange = entry.inRange
         let latest = entry.samples.last
-        let delta = inRange.delta
-        let deltaColor = WeightFormat.deltaColor(delta, current: latest?.kg, target: entry.target)
+        let trend = WeightTrend(samples: entry.samples, range: entry.range, now: entry.date)
         let chart = WeightChart(
             points: inRange.chartPoints(for: entry.range),
             target: entry.target,
+            average: trend.average,
             range: entry.range,
             compact: true,
             now: entry.date
@@ -82,12 +82,19 @@ struct WeightWidgetView: View {
             case .systemMedium:
                 HStack(spacing: 14) {
                     VStack(alignment: .leading, spacing: 4) {
-                        RangeLabel(range: entry.range)
+                        RangeLabel(range: entry.range, average: trend.average)
                         WeightValue(latest: latest)
-                        DeltaText(delta: delta, color: deltaColor)
+                        if let delta = trend.delta {
+                            DeltaText(delta: delta)
+                            if let comparison = entry.range.comparisonTitle {
+                                Text(comparison)
+                                    .font(.caption2)
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
                         Spacer(minLength: 0)
-                        if let target = entry.target, let latest {
-                            Text("\(WeightFormat.kg(abs(latest.kg - target))) to go")
+                        if let target = entry.target, let average = trend.average {
+                            Text("\(WeightFormat.kg(abs(average - target))) to go")
                                 .font(.caption2)
                                 .foregroundStyle(.secondary)
                         }
@@ -103,9 +110,19 @@ struct WeightWidgetView: View {
                         Spacer(minLength: 0)
                     }
                     HStack {
-                        DeltaText(delta: delta, color: deltaColor)
+                        if let delta = trend.delta {
+                            DeltaText(delta: delta)
+                        }
                         Spacer(minLength: 0)
-                        RangeLabel(range: entry.range)
+                        if trend.delta != nil, let comparison = entry.range.comparisonTitle {
+                            Text(comparison.uppercased())
+                                .font(.caption2.weight(.semibold))
+                                .foregroundStyle(.secondary)
+                                .lineLimit(1)
+                                .minimumScaleFactor(0.7)
+                        } else {
+                            RangeLabel(range: entry.range)
+                        }
                     }
                     chart.padding(.top, 4)
                 }
@@ -116,8 +133,9 @@ struct WeightWidgetView: View {
 
 private struct RangeLabel: View {
     let range: WeightRange
+    var average: Double?
     var body: some View {
-        Text(range.title.uppercased())
+        Text(average.map { "\(range.title.uppercased()) AVG \(WeightFormat.number($0))" } ?? range.title.uppercased())
             .font(.caption2.weight(.semibold))
             .foregroundStyle(.secondary)
     }
@@ -137,23 +155,22 @@ private struct WeightValue: View {
 }
 
 private struct DeltaText: View {
-    let delta: Double?
-    let color: Color
+    let delta: Double
     var body: some View {
-        Text(delta.map(WeightFormat.delta) ?? "—")
+        Text(WeightFormat.delta(delta))
             .font(.system(.subheadline, design: .rounded, weight: .semibold))
-            .foregroundStyle(color)
+            .foregroundStyle(WeightFormat.deltaColor(delta))
     }
 }
 
 extension WeightEntry {
     static func preview(range: WeightRange) -> WeightEntry {
         let now = Date.now
-        let samples = (0..<90).reversed().map { daysAgo in
+        let samples = (0..<200).reversed().map { daysAgo in
             WeightSample(
                 id: UUID(),
                 date: Calendar.current.date(byAdding: .day, value: -daysAgo, to: now)!,
-                kg: 84 - Double(90 - daysAgo) * 0.04 + sin(Double(daysAgo)) * 0.3,
+                kg: 84 - Double(200 - daysAgo) * 0.02 + sin(Double(daysAgo)) * 0.3,
                 isFromThisApp: false
             )
         }

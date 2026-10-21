@@ -1,10 +1,12 @@
 import Charts
 import SwiftUI
 
-/// Line graph of weight over a range with a dashed target line. Used by the app and the widget.
+/// Line graph of weight over a range with a dashed target line and a dotted range-average line.
+/// Used by the app and the widget.
 struct WeightChart: View {
     let points: [WeightSample]
     let target: Double?
+    var average: Double?
     let range: WeightRange
     var compact = false
     var highlighted: WeightSample?
@@ -45,6 +47,19 @@ struct WeightChart: View {
                             Text("Target \(WeightFormat.number(target))")
                                 .font(.caption2)
                                 .foregroundStyle(.green)
+                        }
+                    }
+            }
+
+            if let average, !points.isEmpty {
+                RuleMark(y: .value("Average", average))
+                    .lineStyle(StrokeStyle(lineWidth: 1.5, lineCap: .round, dash: [1, 4]))
+                    .foregroundStyle(ink.opacity(0.6))
+                    .annotation(position: .top, alignment: .trailing, spacing: 2) {
+                        if !compact {
+                            Text("Avg \(WeightFormat.number(average))")
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
                         }
                     }
             }
@@ -115,6 +130,7 @@ struct WeightChart: View {
     private var yDomain: ClosedRange<Double> {
         var values = points.map(\.kg)
         if let target { values.append(target) }
+        if let average, !points.isEmpty { values.append(average) }
         guard let low = values.min(), let high = values.max() else { return 0...100 }
         guard compact else {
             let padding = max((high - low) * 0.1, 0.5)

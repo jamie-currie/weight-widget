@@ -15,7 +15,7 @@ struct ContentView: View {
             List {
                 Section {
                     VStack(alignment: .leading, spacing: 16) {
-                        SummaryHeader(inRange: inRange, range: range)
+                        SummaryHeader(range: range)
 
                         Picker("Range", selection: $range) {
                             ForEach(WeightRange.allCases) { Text($0.shortTitle).tag($0) }
@@ -25,6 +25,7 @@ struct ContentView: View {
                         WeightChart(
                             points: points,
                             target: model.targetKg,
+                            average: WeightTrend(samples: model.samples, range: range).average,
                             range: range,
                             highlighted: nearest(to: selectedDate, in: points)
                         )
@@ -86,12 +87,11 @@ struct ContentView: View {
 
 private struct SummaryHeader: View {
     @Environment(WeightModel.self) private var model
-    let inRange: [WeightSample]
     let range: WeightRange
 
     var body: some View {
         let latest = model.latest
-        let delta = inRange.delta
+        let trend = WeightTrend(samples: model.samples, range: range)
 
         HStack(alignment: .firstTextBaseline) {
             VStack(alignment: .leading, spacing: 2) {
@@ -105,12 +105,18 @@ private struct SummaryHeader: View {
             }
             Spacer()
             VStack(alignment: .trailing, spacing: 2) {
-                Text(range.title).font(.caption).foregroundStyle(.secondary)
-                Text(delta.map(WeightFormat.delta) ?? "—")
-                    .font(.system(.title2, design: .rounded, weight: .semibold))
-                    .foregroundStyle(WeightFormat.deltaColor(delta, current: latest?.kg, target: model.targetKg))
-                if let target = model.targetKg, let latest {
-                    Text("\(WeightFormat.kg(abs(latest.kg - target))) to target")
+                Text(trend.average.map { "\(range.title) · avg \(WeightFormat.kg($0))" } ?? range.title)
+                    .font(.caption).foregroundStyle(.secondary)
+                if let delta = trend.delta {
+                    Text(WeightFormat.delta(delta))
+                        .font(.system(.title2, design: .rounded, weight: .semibold))
+                        .foregroundStyle(WeightFormat.deltaColor(delta))
+                    if let comparison = range.comparisonTitle {
+                        Text("avg \(comparison)").font(.caption).foregroundStyle(.secondary)
+                    }
+                }
+                if let target = model.targetKg, let average = trend.average {
+                    Text("\(WeightFormat.kg(abs(average - target))) to target")
                         .font(.caption).foregroundStyle(.secondary)
                 }
             }
