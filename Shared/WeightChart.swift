@@ -30,8 +30,8 @@ struct WeightChart: View {
                     .foregroundStyle(Color.accentColor)
             }
 
-            ForEach(points) { point in
-                if points.count <= 40 {
+            ForEach(plotted) { point in
+                if plotted.count <= 40 {
                     PointMark(x: .value("Date", point.date), y: .value("Weight", point.kg))
                         .symbolSize(compact ? 14 : 18)
                         .foregroundStyle(Color.accentColor)
@@ -49,7 +49,7 @@ struct WeightChart: View {
                 }
             }
 
-            if let last = points.last {
+            if let last = plotted.last {
                 PointMark(x: .value("Date", last.date), y: .value("Weight", last.kg))
                     .symbolSize(compact ? 30 : 50)
                     .foregroundStyle(Color.accentColor)
@@ -149,15 +149,33 @@ struct WeightChart: View {
     }
 
     private var linePoints: [WeightSample] {
-        var line = points
+        var line = plotted
         let domain = xDomain
-        if let startKg {
+        if let startKg, line.first?.date != domain.lowerBound {
             line.insert(WeightSample(id: Self.startID, date: domain.lowerBound, kg: startKg, isFromThisApp: false), at: 0)
         }
-        if let endKg {
+        if let endKg, line.last?.date != domain.upperBound {
             line.append(WeightSample(id: Self.endID, date: domain.upperBound, kg: endKg, isFromThisApp: false))
         }
         return line
+    }
+
+    /// `points` with a reading on the first or last day (or chart bucket) moved onto the chart's edge,
+    /// so the line starts and ends flush instead of a few hours in.
+    private var plotted: [WeightSample] {
+        var plotted = points
+        let domain = xDomain
+        if let first = plotted.first, isSamePlot(first.date, domain.lowerBound) {
+            plotted[0].date = domain.lowerBound
+        }
+        if let last = plotted.last, isSamePlot(last.date, domain.upperBound) {
+            plotted[plotted.count - 1].date = domain.upperBound
+        }
+        return plotted
+    }
+
+    private func isSamePlot(_ date: Date, _ edge: Date) -> Bool {
+        Calendar.current.isDate(date, equalTo: edge, toGranularity: range.chartBucket ?? .day)
     }
 
     private var xDomain: ClosedRange<Date> {
