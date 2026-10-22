@@ -26,12 +26,26 @@ struct ContentView: View {
                             ForEach(WeightRange.allCases) { Text($0.shortTitle).tag($0) }
                         }
                         .pickerStyle(.segmented)
+                        // The picker ignores taps on the selected segment, so catch those to jump
+                        // back to the current window.
+                        .overlay(alignment: .leading) {
+                            if windowOffset > 0, let index = WeightRange.allCases.firstIndex(of: range) {
+                                GeometryReader { geometry in
+                                    let width = geometry.size.width / CGFloat(WeightRange.allCases.count)
+                                    Color.clear
+                                        .contentShape(.rect)
+                                        .frame(width: width)
+                                        .offset(x: width * CGFloat(index))
+                                        .onTapGesture { step(-windowOffset) }
+                                }
+                            }
+                        }
 
                         if let start = range.startDate(now: end) {
                             WindowStepper(
                                 range: range,
+                                offset: windowOffset,
                                 start: start,
-                                end: end,
                                 canGoBack: model.samples.first.map { $0.date < start } ?? false,
                                 canGoForward: windowOffset > 0,
                                 step: step
@@ -208,8 +222,8 @@ extension SummaryHeader {
 
 private struct WindowStepper: View {
     let range: WeightRange
+    let offset: Int
     let start: Date
-    let end: Date
     let canGoBack: Bool
     let canGoForward: Bool
     let step: (Int) -> Void
@@ -227,8 +241,14 @@ private struct WindowStepper: View {
                     Text(start, format: .dateTime.month(.wide).year())
                 case .quarter:
                     Text("Q\((Calendar.current.component(.month, from: start) - 1) / 3 + 1) \(start, format: .dateTime.year())")
+                case .week where offset == 0:
+                    Text("This week")
+                case .week where offset == 1:
+                    Text("Last week")
+                case .week where Calendar.current.isDate(start, equalTo: .now, toGranularity: .year):
+                    Text("Week of \(start, format: .dateTime.day().month(.abbreviated))")
                 default:
-                    Text(start..<range.chartEnd(now: end), format: .interval.day().month(.abbreviated).year())
+                    Text("Week of \(start, format: .dateTime.day().month(.abbreviated).year())")
                 }
             }
             .font(.subheadline.weight(.medium))

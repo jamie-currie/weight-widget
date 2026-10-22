@@ -35,8 +35,8 @@ struct WeightTrendTests {
         days.map { reading(2026, 11, $0, kg, hour: hour) }
     }
 
-    func trend(_ samples: [WeightSample], _ range: WeightRange, now: Date? = nil, requirements: TrendRequirements = .standard) -> WeightTrend {
-        WeightTrend(samples: samples, range: range, now: now ?? self.now, calendar: calendar, requirements: requirements)
+    func trend(_ samples: [WeightSample], _ range: WeightRange, now: Date? = nil) -> WeightTrend {
+        WeightTrend(samples: samples, range: range, now: now ?? self.now, calendar: calendar)
     }
 
     func close(_ a: Double?, _ b: Double, within tolerance: Double = 1e-9) -> Bool {
@@ -137,7 +137,8 @@ struct WeightTrendTests {
         let lastWeekEnd = WeightRange.week.windowEnd(offset: 1, now: now, calendar: calendar)
         let result = trend(samples, .week, now: lastWeekEnd)
         #expect(close(result.average, (81 + 88) / 2, within: 1e-4))
-        #expect(result.delta == nil)
+        // The week before averages its 1 Nov reading with the 81 edge on 2 Nov.
+        #expect(close(result.delta, (81 + 88) / 2 - 80.5, within: 1e-4))
     }
 
     @Test func noReadingsEitherSideMeansNoAverageOrDelta() {
@@ -175,9 +176,10 @@ struct WeightTrendTests {
     }
 
     @Test func sharedEdgeCountsInBothWindows() {
-        // Both windows share the 9 Nov midnight edge, so it cancels out of the delta.
+        // Both windows share the 80.33 edge at 9 Nov midnight: (7 × 80 + 80.33) / 8 shows as 80.0
+        // and (7 × 81 + 80.33) / 8 as 80.9.
         let samples = november(9...15, 80, hour: 8) + november(2...8, 81, hour: 8)
-        #expect(close(trend(samples, .week).delta, (7 * 80 - 7 * 81) / 8))
+        #expect(close(trend(samples, .week).delta, -0.9))
     }
 
     @Test func monthDeltaComparesWithTheWholePreviousMonth() {
@@ -198,42 +200,30 @@ struct WeightTrendTests {
         #expect(close(trend(current + previous, .year).delta, -2))
     }
 
-    @Test func noDeltaWhenPreviousWindowHasTooFewDays() {
-        let samples = november(9...15, 80) + [reading(2026, 11, 3, 81), reading(2026, 11, 7, 81)]
-        let result = trend(samples, .week)
-        #expect(result.delta == nil)
-        #expect(close(result.average, 80))
-    }
-
-    @Test func noDeltaWhenCurrentWindowHasTooFewDays() {
-        let samples = [reading(2026, 11, 9, 80), reading(2026, 11, 14, 80)] + november(2...8, 81)
-        #expect(trend(samples, .week).delta == nil)
-    }
-
-    @Test func noDeltaWhenReadingsAreBunchedAtOneEnd() {
-        let current = november(9...15, 80)
-        #expect(trend(current + november(6...8, 81), .week).delta == nil)
-        #expect(close(trend(current + november([2, 5, 8], 81), .week).delta, -1))
-    }
-
-    @Test func edgesDontCountTowardsRequirements() {
-        // Readings either side give last week two edges, but only one real day.
-        let samples = november(9...15, 80) + [reading(2026, 11, 5, 81), reading(2026, 10, 20, 81)]
-        #expect(trend(samples, .week).delta == nil)
-    }
-
-    @Test func requirementsAreConfigurable() {
+    @Test func deltaShowsEvenWithSparseReadings() {
         let samples = [reading(2026, 11, 15, 80), reading(2026, 11, 8, 81)]
-        #expect(trend(samples, .week).delta == nil)
-        let relaxed = TrendRequirements(rules: [.week: .init(minimumDays: 1, segments: 1)])
         // Both windows also share the edge on 9 Nov, which cancels out.
-        #expect(close(trend(samples, .week, requirements: relaxed).delta, -0.5))
+        #expect(close(trend(samples, .week).delta, -0.5))
     }
 
-    @Test func deltaKeepsFullPrecision() {
+    @Test func previousWindowWithoutReadingsIsEstimated() {
+        // Last week has no readings; the line from 84 on 1 Nov to 80 on 9 Nov is at 83.5 on 2 Nov.
+        let samples = november(9...15, 80) + [reading(2026, 11, 1, 84)]
+        #expect(close(trend(samples, .week).delta, 80 - 83.5))
+    }
+
+    @Test func noDeltaWithNothingBeforeTheCurrentWindow() {
+        let result = trend(november(9...15, 80), .week)
+        #expect(close(result.average, 80))
+        #expect(result.delta == nil)
+    }
+
+    @Test func deltaMatchesTheRoundedAverages() {
+        // Both averages show as 80.0, so the change is 0 rather than the exact 0.08.
         let samples = november(9...15, 80.04) + november(2...8, 79.96)
-        // Rounding the averages first would give 80.0 - 80.0 = 0.
-        #expect(close(trend(samples, .week).delta, 0.08))
+        #expect(close(trend(samples, .week).delta, 0))
+        let apart = november(9...15, 80.06) + november(2...8, 79.94)
+        #expect(close(trend(apart, .week).delta, 0.2))
     }
 
     // MARK: All time
