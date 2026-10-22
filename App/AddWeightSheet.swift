@@ -95,7 +95,17 @@ private struct StepButton: View {
                 .font(.title3.bold())
                 .frame(width: 44, height: 44)
         }
-        .buttonStyle(.bordered)
-        .buttonBorderShape(.circle)
+        .buttonStyle(StepButtonStyle())
+    }
+}
+
+/// `.bordered`'s fill renders black while the sheet animates in, so draw a plain fill instead.
+private struct StepButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .foregroundStyle(.tint)
+            .background(Color(.tertiarySystemFill), in: .circle)
+            .opacity(configuration.isPressed ? 0.5 : 1)
+            .contentShape(.circle)
     }
 }
