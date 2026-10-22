@@ -16,19 +16,21 @@ struct TrendRequirements: Sendable {
     static let standard = TrendRequirements(rules: [
         .week: Rule(minimumDays: 3, segments: 2),
         .month: Rule(minimumDays: 6, segments: 3),
-        .threeMonths: Rule(minimumDays: 10, segments: 3),
-        .sixMonths: Rule(minimumDays: 15, segments: 3),
+        .quarter: Rule(minimumDays: 10, segments: 3),
         .year: Rule(minimumDays: 20, segments: 4),
     ])
 }
 
-/// Average weight over a range's rolling window ending today, and its change from the
-/// immediately preceding window of the same length. Shared by the app and the widget.
+/// Average weight over the calendar period so far (week, month, quarter or year), and its change
+/// from the whole of the preceding period. Shared by the app and the widget.
 ///
 /// Readings are first averaged per local calendar day, so several weigh-ins on one day count
-/// once. Days without readings are skipped, never filled in.
+/// once. Days without readings are skipped, never filled in, but each window also counts the
+/// chart line's value at its start and end (see `interpolatedKg(at:)`) as one reading each.
+/// A window with no readings of its own is averaged from its edges alone. The edges don't count
+/// towards the requirements.
 struct WeightTrend: Equatable, Sendable {
-    /// Mean of the daily means in the current window; nil if it has no readings.
+    /// Mean of the daily means and edge values in the current window; nil if it has neither.
     let average: Double?
     /// Current average minus the preceding window's; nil for All Time or when either window
     /// fails the requirements.
@@ -41,17 +43,25 @@ struct WeightTrend: Equatable, Sendable {
         calendar: Calendar = .current,
         requirements: TrendRequirements = .standard
     ) {
-        let today = calendar.startOfDay(for: now)
         let daily = samples.dailyMeans(until: now, calendar: calendar)
 
-        guard let length = range.days else {
+        guard let currentStart = range.startDate(now: now, calendar: calendar) else {
             average = daily.isEmpty ? nil : daily.map(\.kg).reduce(0, +) / Double(daily.count)
             delta = nil
             return
         }
 
-        let current = Window(endingBefore: today, offset: 0, length: length, daily: daily, calendar: calendar)
-        let previous = Window(endingBefore: today, offset: length, length: length, daily: daily, calendar: calendar)
+        let today = calendar.startOfDay(for: now)
+        let tomorrow = calendar.date(byAdding: .day, value: 1, to: today) ?? today
+        let previousStart = range.startDate(now: currentStart.addingTimeInterval(-1), calendar: calendar) ?? currentStart
+        let current = Window(
+            from: currentStart, to: tomorrow, daily: daily, calendar: calendar,
+            edges: [samples.interpolatedKg(at: currentStart), samples.interpolatedKg(at: now)]
+        )
+        let previous = Window(
+            from: previousStart, to: currentStart, daily: daily, calendar: calendar,
+            edges: [samples.interpolatedKg(at: previousStart), samples.interpolatedKg(at: currentStart)]
+        )
         average = current.average
 
         if let rule = requirements.rules[range],
@@ -68,17 +78,19 @@ private struct Window {
     /// Day offsets from the window's first day (0..<length) for each day with a reading.
     let dayOffsets: [Int]
     let values: [Double]
+    let edges: [Double]
     let length: Int
 
-    /// The `length` days ending `offset` days before today (today itself is in the offset-0 window).
-    init(endingBefore today: Date, offset: Int, length: Int, daily: [(day: Date, kg: Double)], calendar: Calendar) {
+    /// The days from `start` up to but not including `end`, both local midnights.
+    init(from start: Date, to end: Date, daily: [(day: Date, kg: Double)], calendar: Calendar, edges: [Double?]) {
+        let length = calendar.dateComponents([.day], from: start, to: end).day ?? 0
         self.length = length
+        self.edges = edges.compactMap { $0 }
         var offsets: [Int] = []
         var values: [Double] = []
         for (day, kg) in daily {
-            guard let daysAgo = calendar.dateComponents([.day], from: day, to: today).day else { continue }
-            let position = length - 1 - (daysAgo - offset)
-            guard (0..<length).contains(position) else { continue }
+            guard let position = calendar.dateComponents([.day], from: start, to: day).day,
+                  (0..<length).contains(position) else { continue }
             offsets.append(position)
             values.append(kg)
         }
@@ -87,7 +99,9 @@ private struct Window {
     }
 
     var average: Double? {
-        values.isEmpty ? nil : values.reduce(0, +) / Double(values.count)
+        let all = values + edges
+        guard !all.isEmpty else { return nil }
+        return all.reduce(0, +) / Double(all.count)
     }
 
     func satisfies(_ rule: TrendRequirements.Rule) -> Bool {

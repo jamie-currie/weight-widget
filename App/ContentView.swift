@@ -6,37 +6,74 @@ struct ContentView: View {
     @AppStorage("selectedRange") private var range: WeightRange = .month
     @State private var showingSettings = false
     @State private var selectedDate: Date?
+    @State private var windowOffset = 0
+    @State private var stepEdge: Edge = .leading
 
     var body: some View {
-        let inRange = model.samples.filtered(to: range)
+        let end = range.windowEnd(offset: windowOffset)
+        let startKg = range.startDate(now: end).flatMap { model.samples.interpolatedKg(at: $0) }
+        let endKg = model.samples.interpolatedKg(at: end)
+        let inRange = model.samples.filtered(to: range, now: end)
         let points = inRange.chartPoints(for: range)
 
         NavigationStack {
             List {
                 Section {
                     VStack(alignment: .leading, spacing: 16) {
-                        SummaryHeader(range: range)
+                        SummaryHeader(range: range, end: end, isCurrent: windowOffset == 0, readings: inRange, startKg: startKg, endKg: endKg)
 
                         Picker("Range", selection: $range) {
                             ForEach(WeightRange.allCases) { Text($0.shortTitle).tag($0) }
                         }
                         .pickerStyle(.segmented)
 
-                        WeightChart(
-                            points: points,
-                            target: model.targetKg,
-                            average: WeightTrend(samples: model.samples, range: range).average,
-                            range: range,
-                            leadIn: model.samples.lastBefore(range),
-                            highlighted: nearest(to: selectedDate, in: points)
-                        )
-                        .chartXSelection(value: $selectedDate)
-                        .frame(height: 260)
-                        .overlay {
-                            if points.isEmpty {
-                                ContentUnavailableView("No readings", systemImage: "scalemass", description: Text("Nothing in Health for this range."))
-                            }
+                        if let start = range.startDate(now: end) {
+                            WindowStepper(
+                                range: range,
+                                start: start,
+                                end: end,
+                                canGoBack: model.samples.first.map { $0.date < start } ?? false,
+                                canGoForward: windowOffset > 0,
+                                step: step
+                            )
                         }
+
+                        ZStack {
+                            WeightChart(
+                                points: points,
+                                target: model.targetKg,
+                                average: WeightTrend(samples: model.samples, range: range, now: end).average,
+                                range: range,
+                                startKg: startKg,
+                                endKg: endKg,
+                                selectedDate: selectedDate,
+                                now: end
+                            )
+                            .chartXSelection(value: $selectedDate)
+                            // Only a quick flick changes window; a slower drag is scrubbing the selection.
+                            .simultaneousGesture(
+                                DragGesture(minimumDistance: 20).onEnded { value in
+                                    guard range.period != nil else { return }
+                                    let dx = value.translation.width
+                                    guard abs(dx) > 50, abs(dx) > abs(value.translation.height) * 1.5,
+                                          abs(value.velocity.width) > 400 else { return }
+                                    selectedDate = nil
+                                    step(dx > 0 ? 1 : -1)
+                                }
+                            )
+                            .overlay {
+                                if points.isEmpty && startKg == nil && endKg == nil {
+                                    ContentUnavailableView("No readings", systemImage: "scalemass", description: Text("Nothing in Health for this range."))
+                                }
+                            }
+                            // A fresh identity per window makes the chart slide like a page instead of
+                            // morphing each dot from its old position to its new one.
+                            .id(windowOffset)
+                            .transition(.push(from: stepEdge))
+                        }
+                        .frame(height: 260)
+                        // Clip the sideways slide but leave room above for the selection label.
+                        .mask { Rectangle().padding(.vertical, -80) }
                     }
                     .padding(.vertical, 8)
                 }
@@ -57,6 +94,7 @@ struct ContentView: View {
                 }
             }
             .navigationTitle("Weight")
+            .onChange(of: range) { windowOffset = 0 }
             .refreshable { await model.reload() }
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
@@ -80,19 +118,32 @@ struct ContentView: View {
         }
     }
 
-    private func nearest(to date: Date?, in points: [WeightSample]) -> WeightSample? {
-        guard let date else { return nil }
-        return points.min { abs($0.date.timeIntervalSince(date)) < abs($1.date.timeIntervalSince(date)) }
+    /// Positive steps go back in time.
+    private func step(_ windows: Int) {
+        let target = windowOffset + windows
+        guard target >= 0 else { return }
+        if windows > 0 {
+            guard let first = model.samples.first, let start = range.startDate(now: range.windowEnd(offset: windowOffset)),
+                  first.date < start else { return }
+        }
+        stepEdge = windows > 0 ? .leading : .trailing
+        withAnimation(.snappy) { windowOffset = target }
     }
 }
 
 private struct SummaryHeader: View {
     @Environment(WeightModel.self) private var model
     let range: WeightRange
+    let end: Date
+    let isCurrent: Bool
+    let readings: [WeightSample]
+    let startKg: Double?
+    let endKg: Double?
 
     var body: some View {
         let latest = model.latest
-        let trend = WeightTrend(samples: model.samples, range: range)
+        let trend = WeightTrend(samples: model.samples, range: range, now: end)
+        let values = [startKg].compactMap { $0 } + readings.map(\.kg) + [endKg].compactMap { $0 }
 
         HStack(alignment: .firstTextBaseline) {
             VStack(alignment: .leading, spacing: 2) {
@@ -105,23 +156,89 @@ private struct SummaryHeader: View {
                 }
             }
             Spacer()
-            VStack(alignment: .trailing, spacing: 2) {
-                Text(trend.average.map { "\(range.title) · avg \(WeightFormat.kg($0))" } ?? range.title)
-                    .font(.caption).foregroundStyle(.secondary)
-                if let delta = trend.delta {
-                    Text(WeightFormat.delta(delta))
-                        .font(.system(.title2, design: .rounded, weight: .semibold))
-                        .foregroundStyle(WeightFormat.deltaColor(delta))
-                    if let comparison = range.comparisonTitle {
-                        Text("avg \(comparison)").font(.caption).foregroundStyle(.secondary)
+            if isCurrent, range == .week {
+                VStack(alignment: .trailing, spacing: 2) {
+                    Text(trend.average.map { "\(range.title) · avg \(WeightFormat.kg($0))" } ?? range.title)
+                        .font(.caption).foregroundStyle(.secondary)
+                    if let delta = trend.delta {
+                        Text(WeightFormat.delta(delta))
+                            .font(.system(.title2, design: .rounded, weight: .semibold))
+                            .foregroundStyle(WeightFormat.deltaColor(delta))
+                        if let comparison = range.comparisonTitle {
+                            Text("avg \(comparison)").font(.caption).foregroundStyle(.secondary)
+                        }
+                    }
+                    if let target = model.targetKg, let average = trend.average {
+                        Text("\(WeightFormat.kg(abs(average - target))) to target")
+                            .font(.caption).foregroundStyle(.secondary)
                     }
                 }
-                if let target = model.targetKg, let average = trend.average {
-                    Text("\(WeightFormat.kg(abs(average - target))) to target")
+            } else if let average = trend.average {
+                VStack(alignment: .trailing, spacing: 2) {
+                    Text("\(range.title) · avg \(WeightFormat.kg(average))")
                         .font(.caption).foregroundStyle(.secondary)
+                    if !isCurrent || range != .week, values.count > 1, let first = values.first, let last = values.last {
+                        let change = last - first
+                        Text(WeightFormat.delta(change))
+                            .font(.system(.title2, design: .rounded, weight: .semibold))
+                            .foregroundStyle(WeightFormat.deltaColor(change))
+                        Text("Change").font(.caption).foregroundStyle(.secondary)
+                        if range == .all, let since = readings.first?.date {
+                            Text(Self.span(since: since)).font(.caption).foregroundStyle(.secondary)
+                        }
+                    }
+                    if !isCurrent, readings.isEmpty {
+                        Text("Estimated").font(.caption).foregroundStyle(.secondary)
+                    }
                 }
             }
         }
+    }
+}
+
+extension SummaryHeader {
+    static func span(since: Date) -> LocalizedStringKey {
+        let span = Calendar.current.dateComponents([.year, .month], from: since, to: .now)
+        if let years = span.year, years > 0 {
+            return "over ^[\(years) year](inflect: true)"
+        }
+        return "over ^[\(max(span.month ?? 0, 1)) month](inflect: true)"
+    }
+}
+
+private struct WindowStepper: View {
+    let range: WeightRange
+    let start: Date
+    let end: Date
+    let canGoBack: Bool
+    let canGoForward: Bool
+    let step: (Int) -> Void
+
+    var body: some View {
+        HStack {
+            Button("Earlier", systemImage: "chevron.left") { step(1) }
+                .disabled(!canGoBack)
+            Spacer()
+            Group {
+                switch range {
+                case .year:
+                    Text(start, format: .dateTime.year())
+                case .month:
+                    Text(start, format: .dateTime.month(.wide).year())
+                case .quarter:
+                    Text("Q\((Calendar.current.component(.month, from: start) - 1) / 3 + 1) \(start, format: .dateTime.year())")
+                default:
+                    Text(start..<range.chartEnd(now: end), format: .interval.day().month(.abbreviated).year())
+                }
+            }
+            .font(.subheadline.weight(.medium))
+            .monospacedDigit()
+            Spacer()
+            Button("Later", systemImage: "chevron.right") { step(-1) }
+                .disabled(!canGoForward)
+        }
+        .labelStyle(.iconOnly)
+        .buttonStyle(.borderless)
     }
 }
 

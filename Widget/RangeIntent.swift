@@ -8,8 +8,7 @@ extension WeightRange: AppEnum {
         [
             .week: "Week",
             .month: "Month",
-            .threeMonths: "3 Months",
-            .sixMonths: "6 Months",
+            .quarter: "Quarter",
             .year: "Year",
             .all: "All Time",
         ]

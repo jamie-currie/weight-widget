@@ -66,7 +66,7 @@ struct WeightWidgetView: View {
             target: entry.target,
             average: trend.average,
             range: entry.range,
-            leadIn: entry.samples.lastBefore(entry.range, now: entry.date),
+            startKg: entry.range.startDate(now: entry.date).flatMap { entry.samples.interpolatedKg(at: $0) },
             compact: true,
             now: entry.date
         )
@@ -188,5 +188,5 @@ extension WeightEntry {
 #Preview(as: .systemMedium) {
     WeightWidget()
 } timeline: {
-    WeightEntry.preview(range: .threeMonths)
+    WeightEntry.preview(range: .quarter)
 }

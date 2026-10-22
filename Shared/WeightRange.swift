@@ -1,7 +1,10 @@
 import Foundation
 
 enum WeightRange: String, CaseIterable, Codable, Identifiable, Sendable {
-    case week, month, threeMonths, sixMonths, year, all
+    case week, month
+    /// Keeps its old raw value so saved settings from when it was "3 Months" still load.
+    case quarter = "threeMonths"
+    case year, all
 
     var id: Self { self }
 
@@ -9,8 +12,7 @@ enum WeightRange: String, CaseIterable, Codable, Identifiable, Sendable {
         switch self {
         case .week: "W"
         case .month: "M"
-        case .threeMonths: "3M"
-        case .sixMonths: "6M"
+        case .quarter: "Q"
         case .year: "Y"
         case .all: "All"
         }
@@ -20,48 +22,74 @@ enum WeightRange: String, CaseIterable, Codable, Identifiable, Sendable {
         switch self {
         case .week: "Week"
         case .month: "Month"
-        case .threeMonths: "3 Months"
-        case .sixMonths: "6 Months"
+        case .quarter: "Quarter"
         case .year: "Year"
         case .all: "All Time"
         }
     }
 
-    /// What the delta is measured against: the preceding window of the same length.
+    /// What the delta is measured against: the preceding calendar period.
     var comparisonTitle: String? {
         switch self {
         case .week: "vs last week"
         case .month: "vs last month"
-        case .threeMonths: "vs previous 3 months"
-        case .sixMonths: "vs previous 6 months"
+        case .quarter: "vs last quarter"
         case .year: "vs last year"
         case .all: nil
         }
     }
 
-    /// Length of the rolling window in calendar days, including today; nil for all time.
-    var days: Int? {
+    /// Each window is a calendar period of this length: a week (starting on the locale's first
+    /// weekday), a month, a quarter or a year. Nil for all time, which is a single window.
+    var period: (component: Calendar.Component, count: Int)? {
         switch self {
-        case .week: 7
-        case .month: 30
-        case .threeMonths: 90
-        case .sixMonths: 180
-        case .year: 365
+        case .week: (.weekOfYear, 1)
+        case .month: (.month, 1)
+        case .quarter: (.month, 3)
+        case .year: (.month, 12)
         case .all: nil
         }
     }
 
-    /// Start of the range, or nil for all time. The range is the last `days` days including today.
+    /// Start of the calendar period containing `now`, or nil for all time.
     func startDate(now: Date = .now, calendar: Calendar = .current) -> Date? {
-        guard let days else { return nil }
-        return calendar.date(byAdding: .day, value: -(days - 1), to: calendar.startOfDay(for: now))
+        switch period {
+        case nil:
+            return nil
+        case (.weekOfYear, _)?:
+            return calendar.dateInterval(of: .weekOfYear, for: now)?.start
+        case (_, let months)?:
+            let parts = calendar.dateComponents([.year, .month], from: now)
+            guard let year = parts.year, let month = parts.month else { return nil }
+            return calendar.date(from: DateComponents(year: year, month: (month - 1) / months * months + 1, day: 1))
+        }
+    }
+
+    /// End of the window `offset` windows before the current one. The current window ends at `now`;
+    /// earlier ones end at the last second of their final day.
+    func windowEnd(offset: Int, now: Date = .now, calendar: Calendar = .current) -> Date {
+        guard offset > 0 else { return now }
+        return periodEnd(windowsAhead: 1 - offset, now: now, calendar: calendar) ?? now
+    }
+
+    /// Right-hand end of the chart: the end of the period, so the current one is laid out like the
+    /// earlier ones. For All, `now`.
+    func chartEnd(now: Date = .now, calendar: Calendar = .current) -> Date {
+        periodEnd(windowsAhead: 1, now: now, calendar: calendar) ?? now
+    }
+
+    /// The last second before the start of the period `windowsAhead` periods after the current one.
+    private func periodEnd(windowsAhead: Int, now: Date, calendar: Calendar) -> Date? {
+        guard let period, let start = startDate(now: now, calendar: calendar),
+              let nextStart = calendar.date(byAdding: period.component, value: period.count * windowsAhead, to: start) else { return nil }
+        return nextStart.addingTimeInterval(-1)
     }
 
     /// Longer ranges are averaged into buckets so the line stays readable.
     var chartBucket: Calendar.Component? {
         switch self {
         case .week, .month: nil
-        case .threeMonths, .sixMonths: .day
+        case .quarter: .day
         case .year, .all: .weekOfYear
         }
     }
@@ -74,10 +102,14 @@ extension Array where Element == WeightSample {
         return filter { $0.date >= start && $0.date <= now }
     }
 
-    /// The most recent reading before the range starts, however old. Assumes self is sorted oldest first.
-    func lastBefore(_ range: WeightRange, now: Date = .now) -> WeightSample? {
-        guard let start = range.startDate(now: now) else { return nil }
-        return last { $0.date < start }
+    /// Where the straight line between the nearest readings either side of `date` crosses it, however
+    /// far apart they are. Nil unless there's a reading on each side, or if one is exactly at `date`.
+    func interpolatedKg(at date: Date) -> Double? {
+        guard !contains(where: { $0.date == date }),
+              let before = filter({ $0.date < date }).max(by: { $0.date < $1.date }),
+              let after = filter({ $0.date > date }).min(by: { $0.date < $1.date }) else { return nil }
+        let fraction = date.timeIntervalSince(before.date) / after.date.timeIntervalSince(before.date)
+        return before.kg + (after.kg - before.kg) * fraction
     }
 
     func chartPoints(for range: WeightRange, calendar: Calendar = .current) -> [WeightSample] {
