@@ -12,9 +12,6 @@ struct WeightWidgetApp: App {
             ContentView(showingAdd: $showingAdd)
                 .environment(model)
                 .task { await model.start() }
-                .onOpenURL { url in
-                    if url == AppConfig.addURL { showingAdd = true }
-                }
                 .onChange(of: scenePhase, initial: true) {
                     if scenePhase == .active { WidgetCenter.shared.reloadAllTimelines() }
                 }

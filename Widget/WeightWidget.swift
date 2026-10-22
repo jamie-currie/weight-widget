@@ -45,10 +45,9 @@ struct WeightWidget: Widget {
         AppIntentConfiguration(kind: AppConfig.widgetKind, intent: RangeIntent.self, provider: Provider()) { entry in
             WeightWidgetView(entry: entry)
                 .containerBackground(.fill.tertiary, for: .widget)
-                .widgetURL(AppConfig.addURL)
         }
         .configurationDisplayName("Weight")
-        .description("Your weight trend from Apple Health. Tap to add today's weight.")
+        .description("Your weight trend from Apple Health.")
         .supportedFamilies([.systemSmall, .systemMedium])
     }
 }
@@ -75,7 +74,7 @@ struct WeightWidgetView: View {
             VStack(spacing: 6) {
                 Image(systemName: "scalemass").font(.title2)
                 Text("No readings").font(.headline)
-                Text("Tap to add your weight").font(.caption).foregroundStyle(.secondary)
+                Text("Open the app to add your weight").font(.caption).foregroundStyle(.secondary)
             }
             .multilineTextAlignment(.center)
         } else {

@@ -13,7 +13,6 @@ enum AppConfig {
     static let appBundleID = "com.cheeseandpixels.weightwidget"
     static let appGroupID = "group.com.cheeseandpixels.weightwidget"
     static let widgetKind = "WeightWidget"
-    static let addURL = URL(string: "weightwidget://add")!
 
     static var sharedDefaults: UserDefaults {
         UserDefaults(suiteName: appGroupID) ?? .standard
