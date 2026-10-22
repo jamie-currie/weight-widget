@@ -74,6 +74,12 @@ extension Array where Element == WeightSample {
         return filter { $0.date >= start && $0.date <= now }
     }
 
+    /// The most recent reading before the range starts, however old. Assumes self is sorted oldest first.
+    func lastBefore(_ range: WeightRange, now: Date = .now) -> WeightSample? {
+        guard let start = range.startDate(now: now) else { return nil }
+        return last { $0.date < start }
+    }
+
     func chartPoints(for range: WeightRange, calendar: Calendar = .current) -> [WeightSample] {
         guard let component = range.chartBucket else { return self }
         let groups = Dictionary(grouping: self) {

@@ -66,6 +66,7 @@ struct WeightWidgetView: View {
             target: entry.target,
             average: trend.average,
             range: entry.range,
+            leadIn: entry.samples.lastBefore(entry.range, now: entry.date),
             compact: true,
             now: entry.date
         )

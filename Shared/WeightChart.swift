@@ -8,6 +8,8 @@ struct WeightChart: View {
     let target: Double?
     var average: Double?
     let range: WeightRange
+    /// Last reading before the range, so the line runs in from the left edge instead of starting mid-chart.
+    var leadIn: WeightSample?
     var compact = false
     var highlighted: WeightSample?
     var now: Date = .now
@@ -19,12 +21,14 @@ struct WeightChart: View {
 
     var body: some View {
         Chart {
-            ForEach(points) { point in
+            ForEach(linePoints) { point in
                 LineMark(x: .value("Date", point.date), y: .value("Weight", point.kg))
                     .interpolationMethod(.monotone)
                     .lineStyle(StrokeStyle(lineWidth: compact ? 2 : 2.5, lineCap: .round))
                     .foregroundStyle(Color.accentColor)
+            }
 
+            ForEach(points) { point in
                 if points.count <= 40 {
                     PointMark(x: .value("Date", point.date), y: .value("Weight", point.kg))
                         .symbolSize(compact ? 14 : 18)
@@ -116,6 +120,17 @@ struct WeightChart: View {
         }
     }
 
+    /// The lead-in is interpolated onto the left edge rather than drawn at its real date, so an
+    /// old reading can't stretch the y axis.
+    private var linePoints: [WeightSample] {
+        guard let leadIn, let first = points.first else { return points }
+        let start = xDomain.lowerBound
+        guard leadIn.date < start, first.date > start else { return points }
+        let fraction = start.timeIntervalSince(leadIn.date) / first.date.timeIntervalSince(leadIn.date)
+        let edge = WeightSample(id: leadIn.id, date: start, kg: leadIn.kg + (first.kg - leadIn.kg) * fraction, isFromThisApp: false)
+        return [edge] + points
+    }
+
     private var xDomain: ClosedRange<Date> {
         let start = range.startDate(now: now) ?? points.first?.date ?? now.addingTimeInterval(-86_400 * 7)
         return start...max(now, start.addingTimeInterval(3600))
@@ -128,7 +143,7 @@ struct WeightChart: View {
     }
 
     private var yDomain: ClosedRange<Double> {
-        var values = points.map(\.kg)
+        var values = linePoints.map(\.kg)
         if let target { values.append(target) }
         if let average, !points.isEmpty { values.append(average) }
         guard let low = values.min(), let high = values.max() else { return 0...100 }
@@ -138,7 +153,7 @@ struct WeightChart: View {
         }
         // The widget has a gridline per kg: the goal is the bottom line (unless readings dip
         // below it) and the top edge is the next whole kg above the highest reading.
-        let lowestReading = points.map(\.kg).min() ?? low
+        let lowestReading = linePoints.map(\.kg).min() ?? low
         let bottom = target.map { min($0, lowestReading.rounded(.down)) } ?? lowestReading.rounded(.down)
         return bottom...(high.rounded(.down) + 1)
     }

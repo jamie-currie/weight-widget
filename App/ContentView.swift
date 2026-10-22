@@ -27,6 +27,7 @@ struct ContentView: View {
                             target: model.targetKg,
                             average: WeightTrend(samples: model.samples, range: range).average,
                             range: range,
+                            leadIn: model.samples.lastBefore(range),
                             highlighted: nearest(to: selectedDate, in: points)
                         )
                         .chartXSelection(value: $selectedDate)
