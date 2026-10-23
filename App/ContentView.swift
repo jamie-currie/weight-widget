@@ -11,7 +11,8 @@ struct ContentView: View {
 
     var body: some View {
         let end = range.windowEnd(offset: windowOffset)
-        let startKg = range.startDate(now: end).flatMap { model.samples.interpolatedKg(at: $0) }
+        let lineStart = WeightChart.start(samples: model.samples, range: range, now: end)
+        let startKg = lineStart?.kg
         let endKg = model.samples.interpolatedKg(at: end)
         let inRange = model.samples.filtered(to: range, now: end)
         let points = inRange.chartPoints(for: range)
@@ -60,6 +61,7 @@ struct ContentView: View {
                                 range: range,
                                 startKg: startKg,
                                 endKg: endKg,
+                                startReadingDate: lineStart?.readingDate,
                                 selectedDate: selectedDate,
                                 now: end
                             )

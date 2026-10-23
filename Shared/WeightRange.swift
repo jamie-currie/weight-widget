@@ -28,15 +28,20 @@ enum WeightRange: String, CaseIterable, Codable, Identifiable, Sendable {
         }
     }
 
-    /// What the delta is measured against: the preceding calendar period.
-    var comparisonTitle: String? {
+    /// The preceding calendar period.
+    var previousTitle: String? {
         switch self {
-        case .week: "vs last week"
-        case .month: "vs last month"
-        case .quarter: "vs last quarter"
-        case .year: "vs last year"
+        case .week: "last week"
+        case .month: "last month"
+        case .quarter: "last quarter"
+        case .year: "last year"
         case .all: nil
         }
+    }
+
+    /// What the delta is measured against: the preceding calendar period.
+    var comparisonTitle: String? {
+        previousTitle.map { "vs \($0)" }
     }
 
     /// Each window is a calendar period of this length: a week (starting on the locale's first

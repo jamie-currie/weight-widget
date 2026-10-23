@@ -11,6 +11,8 @@ struct WeightChart: View {
     /// Where the line crosses the left and right edges, so it doesn't start or stop mid-chart.
     var startKg: Double?
     var endKg: Double?
+    /// When the reading `startKg` was carried over from was taken; nil if it's an estimate.
+    var startReadingDate: Date?
     var compact = false
     /// The reading or edge point nearest this date gets a label with its value.
     var selectedDate: Date?
@@ -91,12 +93,15 @@ struct WeightChart: View {
                 RuleMark(x: .value("Selected", highlighted.date))
                     .foregroundStyle(.secondary.opacity(0.5))
                     .annotation(position: .top, overflowResolution: .init(x: .fit(to: .chart), y: .disabled)) {
+                        let carriedFrom = highlighted.id == Self.startID ? startReadingDate : nil
                         VStack(spacing: 0) {
                             Text(WeightFormat.kg(highlighted.kg)).font(.caption.bold())
-                            if isEdge(highlighted) {
+                            if carriedFrom != nil, let previous = range.previousTitle {
+                                Text("From \(previous)").font(.caption2).foregroundStyle(.secondary)
+                            } else if isEdge(highlighted) {
                                 Text("Estimated").font(.caption2).foregroundStyle(.secondary)
                             }
-                            Text(highlighted.date, format: .dateTime.day().month(.abbreviated).year(.twoDigits))
+                            Text(carriedFrom ?? highlighted.date, format: .dateTime.day().month(.abbreviated).year(.twoDigits))
                                 .font(.caption2)
                                 .foregroundStyle(.secondary)
                         }
@@ -158,18 +163,31 @@ struct WeightChart: View {
         Self.xDomain(points: points, range: range, now: now)
     }
 
-    /// The line as drawn. A reading on the first or last day (or chart bucket) is moved onto the
-    /// chart's edge, so the line starts and ends flush instead of a few hours in; `startKg` and
-    /// `endKg` fill an edge with no reading on it. The summary's change uses its ends too, so the
-    /// two always agree.
+    /// The line as drawn. It starts at `startKg` (see `startKg(samples:range:now:)`), or when there's
+    /// none, a reading on the first day (or chart bucket) is moved onto the left edge. A reading on
+    /// the last day is moved onto the right edge, and `endKg` fills that edge when there's none.
+    /// The summary's change uses its ends too, so the two always agree.
     static func line(points: [WeightSample], range: WeightRange, startKg: Double?, endKg: Double?, now: Date) -> [WeightSample] {
         line(points: points, range: range, domain: xDomain(points: points, range: range, now: now), startKg: startKg, endKg: endKg)
+    }
+
+    /// Where the previous window's line ends, so each window starts where the last one finished and
+    /// a change between the last reading of one and the first of the next counts in the later
+    /// window instead of neither. `readingDate` is when the reading it was carried from was taken,
+    /// or nil if it's an estimate. Nil unless there are readings before and after the window's start.
+    static func start(samples: [WeightSample], range: WeightRange, now: Date) -> (kg: Double, readingDate: Date?)? {
+        guard let start = range.startDate(now: now), let first = samples.first, let last = samples.last,
+              first.date < start, last.date >= start else { return nil }
+        let previousEnd = start.addingTimeInterval(-1)
+        let previous = samples.filtered(to: range, now: previousEnd).chartPoints(for: range)
+        guard let end = line(points: previous, range: range, startKg: nil, endKg: samples.interpolatedKg(at: previousEnd), now: previousEnd).last else { return nil }
+        return (end.kg, previous.first { $0.id == end.id }?.date)
     }
 
     private static func line(points: [WeightSample], range: WeightRange, domain: ClosedRange<Date>, startKg: Double?, endKg: Double?) -> [WeightSample] {
         var line = points
         let bucket = range.chartBucket ?? .day
-        if let first = line.first, Calendar.current.isDate(first.date, equalTo: domain.lowerBound, toGranularity: bucket) {
+        if startKg == nil, let first = line.first, Calendar.current.isDate(first.date, equalTo: domain.lowerBound, toGranularity: bucket) {
             line[0].date = domain.lowerBound
         }
         if let last = line.last, Calendar.current.isDate(last.date, equalTo: domain.upperBound, toGranularity: bucket) {

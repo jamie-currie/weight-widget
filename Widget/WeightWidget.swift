@@ -67,7 +67,7 @@ struct WeightWidgetView: View {
             target: entry.target,
             average: trend.average,
             range: entry.range,
-            startKg: entry.range.startDate(now: entry.date).flatMap { entry.samples.interpolatedKg(at: $0) },
+            startKg: WeightChart.start(samples: entry.samples, range: entry.range, now: entry.date)?.kg,
             compact: true,
             now: entry.date
         )
