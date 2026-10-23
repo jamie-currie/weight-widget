@@ -104,10 +104,15 @@ extension Array where Element == WeightSample {
 
     /// Where the straight line between the nearest readings either side of `date` crosses it, however
     /// far apart they are. Nil unless there's a reading on each side, or if one is exactly at `date`.
+    /// Assumes self is sorted oldest first.
     func interpolatedKg(at date: Date) -> Double? {
-        guard !contains(where: { $0.date == date }),
-              let before = filter({ $0.date < date }).max(by: { $0.date < $1.date }),
-              let after = filter({ $0.date > date }).min(by: { $0.date < $1.date }) else { return nil }
+        var low = startIndex, high = endIndex
+        while low < high {
+            let mid = (low + high) / 2
+            if self[mid].date < date { low = mid + 1 } else { high = mid }
+        }
+        guard low > startIndex, low < endIndex, self[low].date != date else { return nil }
+        let before = self[low - 1], after = self[low]
         let fraction = date.timeIntervalSince(before.date) / after.date.timeIntervalSince(before.date)
         return before.kg + (after.kg - before.kg) * fraction
     }

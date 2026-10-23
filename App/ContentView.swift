@@ -192,7 +192,7 @@ private struct SummaryHeader: View {
                 VStack(alignment: .trailing, spacing: 2) {
                     Text("\(range.title) · avg \(WeightFormat.kg(average))")
                         .font(.caption).foregroundStyle(.secondary)
-                    if !isCurrent || range != .week, line.count > 1, let first = line.first, let last = line.last {
+                    if line.count > 1, let first = line.first, let last = line.last {
                         let change = last.kg - first.kg
                         Text(WeightFormat.delta(change))
                             .font(.system(.title2, design: .rounded, weight: .semibold))

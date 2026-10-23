@@ -21,6 +21,7 @@ final class WeightModel {
 
     private let health = HealthStore.shared
     private var started = false
+    private var reloadGeneration = 0
 
     func start() async {
         guard !started else { return }
@@ -45,8 +46,11 @@ final class WeightModel {
     }
 
     func reload() async {
+        reloadGeneration += 1
+        let generation = reloadGeneration
         do {
             let fresh = try await health.fetch()
+            guard generation == reloadGeneration else { return }
             hasLoaded = true
             guard fresh != samples else { return }
             samples = fresh

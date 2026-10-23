@@ -5,6 +5,11 @@ enum WeightFormat {
         kg.formatted(.number.precision(.fractionLength(1)))
     }
 
+    /// Reads a number typed in the region's format, including its digits and decimal separator.
+    static func parse(_ text: String) -> Double? {
+        try? Double(text.trimmingCharacters(in: .whitespaces), format: .number)
+    }
+
     static func kg(_ kg: Double) -> String {
         "\(number(kg)) kg"
     }

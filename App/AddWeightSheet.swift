@@ -14,10 +14,10 @@ struct AddWeightSheet: View {
         _text = State(initialValue: initialKg.map(WeightFormat.number) ?? "")
     }
 
+    private static let validKg = 0.1...499.9
+
     private var kg: Double? {
-        let normalised = text.replacingOccurrences(of: ",", with: ".")
-        guard let value = Double(normalised), value > 0, value < 500 else { return nil }
-        return value
+        WeightFormat.parse(text).flatMap { Self.validKg.contains($0) ? $0 : nil }
     }
 
     var body: some View {
@@ -38,6 +38,7 @@ struct AddWeightSheet: View {
                         .frame(maxWidth: .infinity)
                         StepButton(systemImage: "plus") { nudge(by: 0.1) }
                     }
+                    .disabled(saving)
                     .padding(.vertical, 8)
                 }
 
@@ -66,8 +67,8 @@ struct AddWeightSheet: View {
     }
 
     private func nudge(by amount: Double) {
-        let current = kg ?? model.latest?.kg ?? 0
-        text = WeightFormat.number(max(0, current + amount))
+        let current = WeightFormat.parse(text) ?? model.latest?.kg ?? 0
+        text = WeightFormat.number((current + amount).clamped(to: Self.validKg))
     }
 
     private func save() {
@@ -101,11 +102,19 @@ private struct StepButton: View {
 
 /// `.bordered`'s fill renders black while the sheet animates in, so draw a plain fill instead.
 private struct StepButtonStyle: ButtonStyle {
+    @Environment(\.isEnabled) private var isEnabled
+
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .foregroundStyle(.tint)
             .background(Color(.tertiarySystemFill), in: .circle)
-            .opacity(configuration.isPressed ? 0.5 : 1)
+            .opacity(!isEnabled ? 0.4 : configuration.isPressed ? 0.5 : 1)
             .contentShape(.circle)
+    }
+}
+
+private extension Double {
+    func clamped(to range: ClosedRange<Double>) -> Double {
+        min(max(self, range.lowerBound), range.upperBound)
     }
 }

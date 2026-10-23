@@ -22,8 +22,14 @@ struct WeightChart: View {
     private var ink: Color { colorScheme == .dark ? .white : .black }
 
     var body: some View {
+        let domain = xDomain
+        let line = Self.line(points: points, range: range, domain: domain, startKg: startKg, endKg: endKg)
+        let plotted = line.filter { !isEdge($0) }
+        let yScale = yScale(for: line)
+        let highlighted = highlighted(in: line)
+
         Chart {
-            ForEach(linePoints) { point in
+            ForEach(line) { point in
                 LineMark(x: .value("Date", point.date), y: .value("Weight", point.kg))
                     .interpolationMethod(.monotone)
                     .lineStyle(StrokeStyle(lineWidth: compact ? 2 : 2.5, lineCap: .round))
@@ -39,7 +45,7 @@ struct WeightChart: View {
             }
 
             if !compact {
-                ForEach(linePoints.filter(isEdge)) { point in
+                ForEach(line.filter(isEdge)) { point in
                     PointMark(x: .value("Date", point.date), y: .value("Weight", point.kg))
                         .symbol {
                             Circle()
@@ -68,7 +74,7 @@ struct WeightChart: View {
                     }
             }
 
-            if let average, !linePoints.isEmpty {
+            if let average, !line.isEmpty {
                 RuleMark(y: .value("Average", average))
                     .lineStyle(StrokeStyle(lineWidth: 1.5, lineCap: .round, dash: [1, 4]))
                     .foregroundStyle(ink.opacity(0.6))
@@ -103,13 +109,13 @@ struct WeightChart: View {
                     .foregroundStyle(Color.accentColor)
             }
         }
-        .chartXScale(domain: xDomain)
-        .chartYScale(domain: yDomain)
+        .chartXScale(domain: domain)
+        .chartYScale(domain: yScale.domain)
         .chartXAxis(compact ? .hidden : .automatic)
         .chartYAxis {
             if compact {
                 // Labels sit level with their gridline on the left: "88 kg ------".
-                AxisMarks(position: .leading, values: gridValues) { value in
+                AxisMarks(position: .leading, values: gridValues(yScale)) { value in
                     AxisGridLine(stroke: StrokeStyle(lineWidth: 1))
                         .foregroundStyle(ink.opacity(0.2))
                     AxisValueLabel {
@@ -143,17 +149,9 @@ struct WeightChart: View {
         point.id == Self.startID || point.id == Self.endID
     }
 
-    private var highlighted: WeightSample? {
+    private func highlighted(in line: [WeightSample]) -> WeightSample? {
         guard let selectedDate else { return nil }
-        return linePoints.min { abs($0.date.timeIntervalSince(selectedDate)) < abs($1.date.timeIntervalSince(selectedDate)) }
-    }
-
-    private var linePoints: [WeightSample] {
-        Self.line(points: points, range: range, startKg: startKg, endKg: endKg, now: now)
-    }
-
-    private var plotted: [WeightSample] {
-        linePoints.filter { !isEdge($0) }
+        return line.min { abs($0.date.timeIntervalSince(selectedDate)) < abs($1.date.timeIntervalSince(selectedDate)) }
     }
 
     private var xDomain: ClosedRange<Date> {
@@ -165,8 +163,11 @@ struct WeightChart: View {
     /// `endKg` fill an edge with no reading on it. The summary's change uses its ends too, so the
     /// two always agree.
     static func line(points: [WeightSample], range: WeightRange, startKg: Double?, endKg: Double?, now: Date) -> [WeightSample] {
+        line(points: points, range: range, domain: xDomain(points: points, range: range, now: now), startKg: startKg, endKg: endKg)
+    }
+
+    private static func line(points: [WeightSample], range: WeightRange, domain: ClosedRange<Date>, startKg: Double?, endKg: Double?) -> [WeightSample] {
         var line = points
-        let domain = xDomain(points: points, range: range, now: now)
         let bucket = range.chartBucket ?? .day
         if let first = line.first, Calendar.current.isDate(first.date, equalTo: domain.lowerBound, toGranularity: bucket) {
             line[0].date = domain.lowerBound
@@ -188,25 +189,29 @@ struct WeightChart: View {
         return start...max(range.chartEnd(now: now), start.addingTimeInterval(3600))
     }
 
-    /// A gridline every whole kg. None where the goal line already sits.
-    private var gridValues: [Double] {
-        Array(stride(from: yDomain.lowerBound.rounded(.up), through: yDomain.upperBound, by: 1))
-            .filter { $0 != target }
+    /// The widget's gridlines, `gridStep` kg apart. None close to the goal, whose own label would
+    /// collide with it.
+    private func gridValues(_ scale: (domain: ClosedRange<Double>, gridStep: Double)) -> [Double] {
+        let step = scale.gridStep
+        return Array(stride(from: (scale.domain.lowerBound / step).rounded(.up) * step, through: scale.domain.upperBound, by: step))
+            .filter { kg in target.map { abs(kg - $0) >= step / 2 } ?? true }
     }
 
-    private var yDomain: ClosedRange<Double> {
-        var values = linePoints.map(\.kg)
+    private func yScale(for line: [WeightSample]) -> (domain: ClosedRange<Double>, gridStep: Double) {
+        var values = line.map(\.kg)
         if let target { values.append(target) }
-        if let average, !linePoints.isEmpty { values.append(average) }
-        guard let low = values.min(), let high = values.max() else { return 0...100 }
+        if let average, !line.isEmpty { values.append(average) }
+        guard let low = values.min(), let high = values.max() else { return (0...100, 1) }
         guard compact else {
             let padding = max((high - low) * 0.1, 0.5)
-            return (low - padding)...(high + padding)
+            return ((low - padding)...(high + padding), 1)
         }
-        // The widget has a gridline per kg: the goal is the bottom line (unless readings dip
-        // below it) and the top edge is the next whole kg above the highest reading.
-        let lowestReading = linePoints.map(\.kg).min() ?? low
+        // The widget has a gridline every whole kg, or every 2, 5, 10... when the span is too wide
+        // for that to fit. The goal is the bottom line (unless readings dip below it) and the top
+        // edge is the next gridline above the highest reading.
+        let lowestReading = line.map(\.kg).min() ?? low
         let bottom = target.map { min($0, lowestReading.rounded(.down)) } ?? lowestReading.rounded(.down)
-        return bottom...(high.rounded(.down) + 1)
+        let step = [1.0, 2, 5, 10, 20, 50].first { (high - bottom) / $0 <= 6 } ?? 100
+        return (bottom...((high / step).rounded(.down) * step + step), step)
     }
 }

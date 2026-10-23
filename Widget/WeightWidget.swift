@@ -32,11 +32,13 @@ struct Provider: AppIntentTimelineProvider {
     }
 
     /// Health first; it can't be read while the phone is locked, so fall back to the app's cache.
+    /// An empty result is real (readings deleted or access turned off), not a reason to fall back.
     private func loadSamples() async -> [WeightSample] {
-        if let fresh = try? await HealthStore.shared.fetch(), !fresh.isEmpty {
-            return fresh
+        do {
+            return try await HealthStore.shared.fetch()
+        } catch {
+            return SampleCache.load()
         }
-        return SampleCache.load()
     }
 }
 

@@ -32,19 +32,19 @@ struct SettingsView: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("Done") { saveAndDismiss() }
+                    Button("Done") { dismiss() }
                 }
             }
             .onAppear {
                 targetText = model.targetKg.map(WeightFormat.number) ?? ""
             }
+            .onDisappear { saveTarget() }
         }
     }
 
-    private func saveAndDismiss() {
-        let value = Double(targetText.replacingOccurrences(of: ",", with: "."))
-        let newTarget = value.flatMap { $0 > 0 ? $0 : nil }
+    /// Runs however the sheet closes, so swiping it away keeps what was typed too.
+    private func saveTarget() {
+        let newTarget = WeightFormat.parse(targetText).flatMap { $0 > 0 ? $0 : nil }
         if newTarget != model.targetKg { model.targetKg = newTarget }
-        dismiss()
     }
 }
