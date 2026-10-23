@@ -12,4 +12,4 @@ A personal iOS app and home-screen widget for tracking body weight, with Apple H
 - Scrub the app's graph to see individual values; swipe to delete readings this app added
 - Picks up readings from other sources (e.g. a smart scale) via HealthKit background delivery and refreshes the widget
 
-Readings are kept in kg. Longer ranges are averaged per day (Q) or per week (Y, All) on the graph. Range averages and deltas first average each local calendar day, so several weigh-ins on one day count once. Unit tests for this are in `Tests/` (scheme `WeightWidgetTests`).
+Readings are kept in kg. Longer ranges are averaged per day (Q) or per week (Y, All) on the graph. Range averages and deltas first average each local calendar day, so several weigh-ins on one day count once.
