@@ -149,36 +149,41 @@ struct WeightChart: View {
     }
 
     private var linePoints: [WeightSample] {
-        var line = plotted
-        let domain = xDomain
+        Self.line(points: points, range: range, startKg: startKg, endKg: endKg, now: now)
+    }
+
+    private var plotted: [WeightSample] {
+        linePoints.filter { !isEdge($0) }
+    }
+
+    private var xDomain: ClosedRange<Date> {
+        Self.xDomain(points: points, range: range, now: now)
+    }
+
+    /// The line as drawn. A reading on the first or last day (or chart bucket) is moved onto the
+    /// chart's edge, so the line starts and ends flush instead of a few hours in; `startKg` and
+    /// `endKg` fill an edge with no reading on it. The summary's change uses its ends too, so the
+    /// two always agree.
+    static func line(points: [WeightSample], range: WeightRange, startKg: Double?, endKg: Double?, now: Date) -> [WeightSample] {
+        var line = points
+        let domain = xDomain(points: points, range: range, now: now)
+        let bucket = range.chartBucket ?? .day
+        if let first = line.first, Calendar.current.isDate(first.date, equalTo: domain.lowerBound, toGranularity: bucket) {
+            line[0].date = domain.lowerBound
+        }
+        if let last = line.last, Calendar.current.isDate(last.date, equalTo: domain.upperBound, toGranularity: bucket) {
+            line[line.count - 1].date = domain.upperBound
+        }
         if let startKg, line.first?.date != domain.lowerBound {
-            line.insert(WeightSample(id: Self.startID, date: domain.lowerBound, kg: startKg, isFromThisApp: false), at: 0)
+            line.insert(WeightSample(id: startID, date: domain.lowerBound, kg: startKg, isFromThisApp: false), at: 0)
         }
         if let endKg, line.last?.date != domain.upperBound {
-            line.append(WeightSample(id: Self.endID, date: domain.upperBound, kg: endKg, isFromThisApp: false))
+            line.append(WeightSample(id: endID, date: domain.upperBound, kg: endKg, isFromThisApp: false))
         }
         return line
     }
 
-    /// `points` with a reading on the first or last day (or chart bucket) moved onto the chart's edge,
-    /// so the line starts and ends flush instead of a few hours in.
-    private var plotted: [WeightSample] {
-        var plotted = points
-        let domain = xDomain
-        if let first = plotted.first, isSamePlot(first.date, domain.lowerBound) {
-            plotted[0].date = domain.lowerBound
-        }
-        if let last = plotted.last, isSamePlot(last.date, domain.upperBound) {
-            plotted[plotted.count - 1].date = domain.upperBound
-        }
-        return plotted
-    }
-
-    private func isSamePlot(_ date: Date, _ edge: Date) -> Bool {
-        Calendar.current.isDate(date, equalTo: edge, toGranularity: range.chartBucket ?? .day)
-    }
-
-    private var xDomain: ClosedRange<Date> {
+    private static func xDomain(points: [WeightSample], range: WeightRange, now: Date) -> ClosedRange<Date> {
         let start = range.startDate(now: now) ?? points.first?.date ?? now.addingTimeInterval(-86_400 * 7)
         return start...max(range.chartEnd(now: now), start.addingTimeInterval(3600))
     }

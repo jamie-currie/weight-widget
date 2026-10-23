@@ -20,7 +20,7 @@ struct ContentView: View {
             List {
                 Section {
                     VStack(alignment: .leading, spacing: 16) {
-                        SummaryHeader(range: range, end: end, isCurrent: windowOffset == 0, readings: inRange, startKg: startKg, endKg: endKg)
+                        SummaryHeader(range: range, end: end, isCurrent: windowOffset == 0, readings: inRange, points: points, startKg: startKg, endKg: endKg)
 
                         Picker("Range", selection: $range) {
                             ForEach(WeightRange.allCases) { Text($0.shortTitle).tag($0) }
@@ -151,13 +151,14 @@ private struct SummaryHeader: View {
     let end: Date
     let isCurrent: Bool
     let readings: [WeightSample]
+    let points: [WeightSample]
     let startKg: Double?
     let endKg: Double?
 
     var body: some View {
         let latest = model.latest
         let trend = WeightTrend(samples: model.samples, range: range, now: end)
-        let values = [startKg].compactMap { $0 } + readings.map(\.kg) + [endKg].compactMap { $0 }
+        let line = WeightChart.line(points: points, range: range, startKg: startKg, endKg: endKg, now: end)
 
         HStack(alignment: .firstTextBaseline) {
             VStack(alignment: .leading, spacing: 2) {
@@ -191,8 +192,8 @@ private struct SummaryHeader: View {
                 VStack(alignment: .trailing, spacing: 2) {
                     Text("\(range.title) · avg \(WeightFormat.kg(average))")
                         .font(.caption).foregroundStyle(.secondary)
-                    if !isCurrent || range != .week, values.count > 1, let first = values.first, let last = values.last {
-                        let change = last - first
+                    if !isCurrent || range != .week, line.count > 1, let first = line.first, let last = line.last {
+                        let change = last.kg - first.kg
                         Text(WeightFormat.delta(change))
                             .font(.system(.title2, design: .rounded, weight: .semibold))
                             .foregroundStyle(WeightFormat.deltaColor(change))
